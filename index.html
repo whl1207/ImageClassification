@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>自定义图片分类器</title>
+    <script src="./tfjs.js"></script>
+    <script src="./chart.js"></script>
+    <script src="./tfjs-vis.js"></script> <!--https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-vis-->
+    <style>
+        /* 基础样式 */
+        :root {
+            --background-color: #f4f4f9;
+            --text-color: #333;
+            --button-color: #007bff;
+            --button-hover-color: #0056b3;
+            --border-color: #ddd;
+            --card-background-color: #fff;
+            --title-color: #007bff;
+        }
+
+        body.dark-mode {
+            --background-color: #121212;
+            --text-color: #e0e0e0;
+            --button-color: #002d4b;
+            --button-hover-color: #006696;
+            --border-color: #9c9c9c;
+            --card-background-color: #2c2c2c;
+            --title-color: #95c0ff;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: var(--background-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 0;
+            display: flex;
+            min-height: 100vh;
+        }
+
+        .main-content {
+            flex: 1;
+            padding: 10px;
+        }
+
+        .container {
+            display: flex;
+            gap: 10px;
+        }
+
+        .left-section, .right-section {
+            background: var(--card-background-color);
+            padding: 10px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .left-section {
+            flex: 2;
+        }
+
+        .right-section {
+            flex: 1;
+        }
+
+        .train-section, .classify-section {
+            margin: 10px 0px;
+            padding: 5px;
+            border-radius: 5px;
+            border: 1px solid var(--border-color);
+        }
+
+        .train-section button, .classify-section button, .right-section button {
+            background-color: var(--button-color);
+            color: white;
+            border: var(--border-color) 1px solid;
+            padding: 5px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s ease;
+        }
+
+        .train-section button:hover, .classify-section button:hover {
+            background-color: var(--button-hover-color);
+        }
+
+        #image-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .image-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .image-group h3 {
+            width: 100%;
+            font-size: 16px;
+            color: var(--title-color);
+            margin: 5px;
+        }
+
+        .image-card {
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            overflow: hidden;
+            width: 150px;
+            text-align: center;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .image-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        .image-card img {
+            width: 100%;
+            height: 100px;
+            object-fit: cover;
+        }
+
+        .image-card p {
+            margin: 5px 0;
+            font-size: 14px;
+            color: #666;
+        }
+
+        #progress-bar {
+            width: 100%;
+            margin-top: 10px;
+            height: 20px;
+            border-radius: 5px;
+            background-color: #e9ecef;
+        }
+
+        #progress-bar::-webkit-progress-value {
+            background-color: var(--button-color);
+            border-radius: 5px;
+        }
+
+        #progress-bar::-moz-progress-bar {
+            background-color: var(--button-color);
+            border-radius: 5px;
+        }
+
+        #result {
+            border: 1px solid var(--border-color);
+            border-radius: 5px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        #training-chart {
+            max-width: 100%;
+            margin-top: 20px;
+        }
+
+        .section-title {
+            font-size: 20px;
+            font-weight: bold;
+            color: var(--title-color);
+            display: inline-block;
+            margin-bottom: 10px;
+        }
+
+        .file-input {
+            display: inline-block;
+        }
+
+        .file-input input {
+            display: none;
+        }
+
+        .file-input label {
+            background-color: var(--button-color);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            display: inline-block;
+            transition: background-color 0.3s ease;
+            border: var(--border-color) 1px solid;
+        }
+
+        .file-input label:hover {
+            background-color: var(--button-hover-color);
+        }
+
+        .model-info {
+            margin: 10px 0px;
+            padding: 5px;
+            border-radius: 5px;
+            border: 1px solid var(--border-color);
+        }
+
+        .model-info h3 {
+            margin: 0;
+            color: var(--title-color);
+        }
+
+        pre {
+            background-color: var(--card-background-color);
+            margin: 0px;
+            padding: 10px;
+            border-radius: 5px;
+            overflow-x: auto;
+            border: 1px solid var(--border-color);
+        }
+
+        .model-params {
+            margin-bottom: 0px;
+        }
+
+        .model-params label {
+            display: block;
+            margin-top: 10px;
+            color: var(--text-color);
+            display: inline-block;
+            width:120px;
+        }
+
+        .model-params input {
+            margin-top: 5px;
+            border: 1px solid var(--border-color);
+            background-color: var(--card-background-color);
+            color: var(--text-color);
+            width: calc(50% - 140px); 
+            padding: 5px; 
+            margin-top: 0px;
+            border-radius: 5px;
+            display: inline-block;
+        }
+        textarea{
+            width:calc(100% - 5px);
+            border:1px solid var(--border-color);
+            background-color: var(--card-background-color);
+            color: var(--text-color);
+            border-radius: 5px;
+            resize: none;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="main-content">
+        <div class="container">
+            <!-- 左侧：上传图片 -->
+            <div class="left-section">
+                <div class="section-title" data-lang="uploadTitle">上传图片</div>
+                <div class="file-input" style="float: right;">
+                    <input type="file" id="upload" multiple accept="image/*" />
+                    <label for="upload" data-lang="selectImages">选择图片</label>
+                </div>
+                <div id="image-container"></div>
+            </div>
+
+            <!-- 右侧：训练和分类 -->
+            <div class="right-section">
+                <button onclick="toggleDarkMode()" data-lang="toggleDarkMode">主题</button>
+                <button onclick="toggleLanguage()" data-lang="toggleLanguage">语言</button>
+                <button onclick="exportModel()" data-lang="exportModel">导出模型</button>
+                <input type="file" id="import-model" accept=".json" style="display: none;" />
+                <button onclick="document.getElementById('import-model').click()" data-lang="importModel">导入模型</button>
+
+                <!-- 模型信息 -->
+                <div class="model-info">
+                    <h3 data-lang="modelInfo">模型信息</h3>
+                    <div class="model-params">
+                        <label for="epochs" data-lang="epochs">迭代次数:</label>
+                        <input type="number" id="epochs" value="50" min="1" >
+                        <label for="convLayers" data-lang="convLayers">卷积层数量:</label>
+                        <input type="number" id="convLayers" value="2" min="1" max="5">
+                        <label for="filters" data-lang="filters">卷积核数量:</label>
+                        <input type="number" id="filters" value="16" min="1" max="128">
+                        <label for="kernelSize" data-lang="kernelSize">卷积核大小:</label>
+                        <input type="number" id="kernelSize" value="3" min="1" max="7">
+                        <label for="denseUnits" data-lang="denseUnits">全连接层单元数:</label>
+                        <input type="number" id="denseUnits" value="64" min="1" max="256">
+                        <label for="modelParams" data-lang="modelParams">模型参数:</label>
+                        <textarea type="number" id="modelParams" rows="7" value="" placeholder="[]"></textarea>
+                    </div>
+                </div>
+                <div class="train-section">
+                    <div class="section-title" data-lang="trainTitle">训练模型</div>
+                    <button onclick="trainModel()" data-lang="startTraining" style="float: right;">开始训练</button>
+                    <progress id="progress-bar" value="0" max="100"></progress>
+                    <canvas id="training-chart"></canvas>
+                </div>
+
+                <div class="classify-section">
+                    <div class="section-title" data-lang="classifyTitle">分类新图片</div>
+                    <div class="file-input" style="float: right;">
+                        <input type="file" id="classify" accept="image/*" />
+                        <label for="classify" data-lang="classifyImage">选择图片</label>
+                    </div>
+                    <div style="display: flex;">
+                        <div class="image-card" style="flex:1;height:100px">
+                            <div id="classify-image-container" class="img"></div>
+                        </div>
+                        <div id="result" style="flex:1;height:100px"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let model;
+        let trainingData = [];
+        let labels = [];
+        const imageSize = 64; // 图片大小调整为64x64
+
+        let uniqueLabels = [];
+        let labelToIndex = {};
+
+        let chart;
+        let chartData = {
+            labels: [],
+            datasets: [{
+                label: 'Loss',
+                data: [],
+                borderColor: 'rgba(255, 99, 132, 1)',
+                fill: false
+            }, {
+                label: 'Accuracy',
+                data: [],
+                borderColor: 'rgba(54, 162, 235, 1)',
+                fill: false
+            }]
+        };
+
+        function initializeChart() {
+            const ctx = document.getElementById('training-chart').getContext('2d');
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: chartData,
+                options: {
+                    responsive: true,
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Epochs'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Value'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        initializeChart();
+
+        async function loadImages(event) {
+            const files = event.target.files;
+            const imageContainer = document.getElementById('image-container');
+            imageContainer.innerHTML = '';
+
+            const groupedImages = {};
+
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                const img = await loadImage(file);
+                const label = getLabelFromFilename(file.name);
+
+                if (!uniqueLabels.includes(label)) {
+                    uniqueLabels.push(label);
+                    labelToIndex[label] = uniqueLabels.length - 1;
+                }
+
+                if (!groupedImages[label]) {
+                    groupedImages[label] = [];
+                }
+                groupedImages[label].push({ img, file });
+            }
+
+            for (const label in groupedImages) {
+                const groupContainer = document.createElement('div');
+                groupContainer.className = 'image-group';
+                groupContainer.innerHTML = `<h3>${label}</h3>`;
+                const groupImages = groupedImages[label];
+
+                for (const item of groupImages) {
+                    const imageCard = document.createElement('div');
+                    imageCard.className = 'image-card';
+                    imageCard.innerHTML = `
+                        <img src="${item.img.src}" alt="${item.file.name}" />
+                        <p>${item.file.name}</p>
+                    `;
+                    groupContainer.appendChild(imageCard);
+
+                    const tensor = preprocessImage(item.img);
+                    trainingData.push(tensor);
+                    labels.push(labelToIndex[label]);
+                }
+
+                imageContainer.appendChild(groupContainer);
+            }
+            console.log('图片加载并预处理完成。');
+        }
+
+        function loadImage(file) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.src = URL.createObjectURL(file);
+                img.onload = () => resolve(img);
+                img.onerror = (err) => reject(err);
+            });
+        }
+
+        function preprocessImage(img) {
+            return tf.browser.fromPixels(img)
+                .resizeNearestNeighbor([imageSize, imageSize])
+                .toFloat()
+                .div(tf.scalar(255))
+                .expandDims();
+        }
+
+        function getLabelFromFilename(filename) {
+            return filename.split('_')[0];
+        }
+
+        function createModel() {
+            const model = tf.sequential();
+
+            const convLayers = parseInt(document.getElementById('convLayers').value, 10);
+            const filters = parseInt(document.getElementById('filters').value, 10);
+            const kernelSize = parseInt(document.getElementById('kernelSize').value, 10);
+            const denseUnits = parseInt(document.getElementById('denseUnits').value, 10);
+
+            for (let i = 0; i < convLayers; i++) {
+                model.add(tf.layers.conv2d({
+                    inputShape: i === 0 ? [imageSize, imageSize, 3] : undefined,
+                    filters: filters,
+                    kernelSize: kernelSize,
+                    activation: 'relu',
+                    padding: 'same'
+                }));
+                model.add(tf.layers.maxPooling2d({ poolSize: 2, strides: 2 }));
+            }
+
+            model.add(tf.layers.flatten());
+            model.add(tf.layers.dense({ units: denseUnits, activation: 'relu' }));
+            model.add(tf.layers.dense({ units: uniqueLabels.length, activation: 'softmax' }));
+
+            return model;
+        }
+
+        async function trainModel() {
+            if (trainingData.length === 0) {
+                alert('请先加载图片。');
+                return;
+            }
+
+            chartData.labels = [];
+            chartData.datasets[0].data = [];
+            chartData.datasets[1].data = [];
+            chart.update();
+
+            document.getElementById('modelParams').value = JSON.stringify({
+                labels: uniqueLabels,
+            }, null, 2);
+
+            const xs = tf.concat(trainingData);
+            const ys = tf.oneHot(tf.tensor1d(labels, 'int32'), uniqueLabels.length);
+
+            model = createModel();
+            model.compile({
+                optimizer: 'adam',
+                loss: 'categoricalCrossentropy',
+                metrics: ['accuracy']
+            });
+
+            const totalEpochs = parseInt(document.getElementById('epochs').value, 10);
+
+            const progressBar = document.getElementById('progress-bar');
+            await model.fit(xs, ys, {
+                epochs: totalEpochs,
+                batchSize: 8,
+                callbacks: {
+                    onEpochEnd: (epoch, logs) => {
+                        const progress = ((epoch + 1) / totalEpochs) * 100;
+                        progressBar.value = progress;
+
+                        chartData.labels.push(epoch + 1);
+                        chartData.datasets[0].data.push(logs.loss);
+                        chartData.datasets[1].data.push(logs.acc);
+
+                        chart.update();
+
+                        console.log(`Epoch ${epoch + 1}/${totalEpochs}: loss = ${logs.loss.toFixed(4)}, accuracy = ${logs.acc.toFixed(4)}`);
+                    }
+                }
+            });
+
+            console.log('模型训练完成。');
+        }
+
+        async function classifyNewImage(event) {
+            if (!model) {
+                alert('请先训练模型。');
+                return;
+            }
+
+            const file = event.target.files[0];
+            if (!file) {
+                alert('请选择一张图片进行分类。');
+                return;
+            }
+
+            const img = await loadImage(file);
+
+            const classifyImageContainer = document.getElementById('classify-image-container');
+            classifyImageContainer.innerHTML = `<img src="${img.src}" alt="Classify Image" />`;
+
+            const tensor = preprocessImage(img);
+            const prediction = await model.predict(tensor);
+            const result = await prediction.data();
+
+            let resultText = '';
+            for (let i = 0; i < uniqueLabels.length; i++) {
+                resultText += `${uniqueLabels[i]}: ${result[i].toFixed(4)}\n`;
+            }
+            document.getElementById('result').innerText = resultText;
+        }
+
+        function toggleDarkMode() {
+            document.body.classList.toggle('dark-mode');
+        }
+
+        const translations = {
+            en: {
+                uploadTitle: "Upload Images",
+                trainTitle: "Train Model",
+                classifyTitle: "Classify New Image",
+                selectImages: "Select Images",
+                startTraining: "Start Training",
+                classifyImage: "Classify Image",
+                result: "Result",
+                toggleDarkMode: "Theme",
+                toggleLanguage: "Language",
+                exportModel: "Export",
+                importModel: "Import",
+                modelInfo: "Model Information",
+                epochs: "Epochs",
+                modelParams: "Parameters",
+                convLayers: "Conv Layers",
+                filters: "Filters",
+                kernelSize: "Kernel Size",
+                denseUnits: "Dense Units"
+            },
+            zh: {
+                uploadTitle: "上传图片",
+                trainTitle: "训练模型",
+                classifyTitle: "分类新图片",
+                selectImages: "选择图片",
+                startTraining: "开始训练",
+                classifyImage: "分类图片",
+                result: "结果",
+                toggleDarkMode: "主题",
+                toggleLanguage: "切换语言",
+                exportModel: "导出模型",
+                importModel: "导入模型",
+                modelInfo: "模型信息",
+                epochs: "迭代次数",
+                modelParams: "模型参数",
+                convLayers: "卷积层数量",
+                filters: "卷积核数量",
+                kernelSize: "卷积核大小",
+                denseUnits: "全连接层单元数"
+            }
+        };
+
+        let currentLanguage = 'zh';
+
+        function toggleLanguage() {
+            currentLanguage = currentLanguage === 'en' ? 'zh' : 'en';
+            updateTexts();
+        }
+
+        function updateTexts() {
+            const elements = document.querySelectorAll('[data-lang]');
+            elements.forEach(element => {
+                const key = element.getAttribute('data-lang');
+                if (translations[currentLanguage][key]) {
+                    element.innerText = translations[currentLanguage][key];
+                }
+            });
+        }
+
+        async function exportModel() {
+            if (!model) {
+                alert('请先训练模型。');
+                return;
+            }
+
+            const modelArtifacts = await model.save(tf.io.withSaveHandler(async (modelArtifacts) => {
+                return modelArtifacts;
+            }));
+
+            const exportData = {
+                modelTopology: modelArtifacts.modelTopology,
+                weightSpecs: modelArtifacts.weightSpecs,
+                weightData: Array.from(new Uint8Array(modelArtifacts.weightData)),
+                uniqueLabels,
+                labelToIndex
+            };
+
+            const blob = new Blob([JSON.stringify(exportData)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'model-and-labels.json';
+            a.click();
+            URL.revokeObjectURL(url);
+
+            alert('模型和标签信息已导出。');
+        }
+
+        document.getElementById('import-model').addEventListener('change', async (event) => {
+            const files = event.target.files;
+            if (files.length === 0) return;
+
+            const file = files[0];
+            const fileReader = new FileReader();
+            fileReader.onload = async () => {
+                const exportData = JSON.parse(fileReader.result);
+
+                const modelArtifacts = {
+                    modelTopology: exportData.modelTopology,
+                    weightSpecs: exportData.weightSpecs,
+                    weightData: new Uint8Array(exportData.weightData).buffer
+                };
+                model = await tf.loadLayersModel(tf.io.fromMemory(modelArtifacts));
+
+                uniqueLabels = exportData.uniqueLabels;
+                labelToIndex = exportData.labelToIndex;
+
+                document.getElementById('modelParams').value = JSON.stringify({
+                    labels: uniqueLabels,
+                    modelSummary: model.summary()
+                }, null, 2);
+            };
+            fileReader.readAsText(file);
+        });
+
+        document.getElementById('upload').addEventListener('change', loadImages);
+        document.getElementById('classify').addEventListener('change', classifyNewImage);
+    </script>
+</body>
+</html>
